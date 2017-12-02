@@ -1194,7 +1194,7 @@ runPhase (RealPhase cc_phase) input_fn dflags
 
         -- Decide next phase
         next_phase <-
-            if platformArch platform == ArchUnknown
+            if platformArch platform == ArchWasm
               then maybeMergeForeign
               else return (As False)
 
@@ -1269,7 +1269,7 @@ runPhase (RealPhase cc_phase) input_fn dflags
 
                        -- We should not make assumptions about assembly languages
                        -- that we do not know about
-                       ++ (if platformArch platform == ArchUnknown
+                       ++ (if platformArch platform == ArchWasm
                              then ["-c"]
                              else [ "-S"])
                        ++ cc_opt
