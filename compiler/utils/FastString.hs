@@ -609,7 +609,10 @@ lengthLS (LitString _ n) = n
 -- under the carpet
 
 foreign import ccall unsafe "strlen"
-  ptrStrLength :: Ptr Word8 -> Int
+  ptrStrLength' :: Ptr Word8 -> Word
+
+ptrStrLength :: Ptr Word8 -> Int
+ptrStrLength = fromIntegral . ptrStrLength'
 
 {-# NOINLINE sLit #-}
 sLit :: String -> LitString
