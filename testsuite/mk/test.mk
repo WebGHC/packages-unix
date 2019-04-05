@@ -28,6 +28,8 @@ COMPILER     = ghc
 CONFIGDIR    = $(TOP)/config
 CONFIG       = $(CONFIGDIR)/$(COMPILER)
 
+include $(TOP)/mk/config.mk
+
 ifeq "$(GhcUnregisterised)" "YES"
     # Otherwise C backend generates many warnings about
     # imcompatible proto casts for GCC's buitins:
@@ -227,6 +229,10 @@ else ifeq "$(LOCAL)" "NO"
 RUNTEST_OPTS += -e config.local=False
 else
 RUNTEST_OPTS += -e config.local=True
+endif
+
+ifneq "$(TEST_INTERPRETER)" ""
+RUNTEST_OPTS += -e 'config.testInterpreter="$(TEST_INTERPRETER)"'
 endif
 
 RUNTEST_OPTS +=  \
