@@ -162,6 +162,7 @@ data CmmToken
   | CmmT_reserve
   | CmmT_return
   | CmmT_returns
+  | CmmT_cextern
   | CmmT_import
   | CmmT_switch
   | CmmT_case
@@ -248,6 +249,7 @@ reservedWordsFM = listToUFM $
         ( "reserve",            CmmT_reserve ),
         ( "return",             CmmT_return ),
         ( "returns",            CmmT_returns ),
+        ( "cextern",            CmmT_cextern ),
         ( "import",             CmmT_import ),
         ( "switch",             CmmT_switch ),
         ( "case",               CmmT_case ),

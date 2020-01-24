@@ -118,6 +118,7 @@ endef
 $(foreach lib,$(ALL_RTS_DEF_LIBNAMES),$(eval $(call make-importlib-def,$(lib))))
 endif
 
+ifneq "$(DisableFFI)" "YES"
 ifneq "$(BINDIST)" "YES"
 ifneq "$(UseSystemLibFFI)" "YES"
 ifeq "$(TargetOS_CPP)" "mingw32"
@@ -130,6 +131,7 @@ rts/dist/build/lib$(LIBFFI_NAME)$(soext): libffi/build/inst/lib/lib$(LIBFFI_NAME
 	cp libffi/build/inst/lib/lib$(LIBFFI_NAME)$(soext)* rts/dist/build
 ifeq "$(TargetOS_CPP)" "darwin"
 	install_name_tool -id @rpath/lib$(LIBFFI_NAME)$(soext) rts/dist/build/lib$(LIBFFI_NAME)$(soext)
+endif
 endif
 endif
 endif
@@ -164,6 +166,9 @@ endif
 rts_dist_$1_CC_OPTS += -DDYNAMIC
 endif
 
+ifeq "$(DisableFFI)" "YES"
+rts_dist_$1_CC_OPTS += -DDISABLE_FFI
+endif
 
 $(call distdir-way-opts,rts,dist,$1,1) # 1 because the rts is built with stage1
 $(call c-suffix-rules,rts,dist,$1,YES)
@@ -201,8 +206,12 @@ ifeq "$$(TargetOS_CPP)" "mingw32"
 rts_dist_$1_CC_OPTS += -DWINVER=$(rts_WINVER)
 endif
 
+ifneq "$(DisableFFI)" "YES"
 ifneq "$$(UseSystemLibFFI)" "YES"
 rts_dist_FFI_SO = rts/dist/build/lib$$(LIBFFI_NAME)$$(soext)
+else
+rts_dist_FFI_SO =
+endif
 else
 rts_dist_FFI_SO =
 endif
@@ -232,6 +241,7 @@ $$(rts_$1_LIB) : $$(rts_$1_OBJS) $$(ALL_RTS_DEF_LIBS) rts/dist/libs.depend rts/d
          "$(rts_INSTALL_INFO)-$(subst dyn,,$(subst _dyn,,$(subst v,,$1)))" "$(ProjectVersion)"
 
 else
+ifneq "$$(DisableFFI)" "YES"
 ifneq "$$(UseSystemLibFFI)" "YES"
 LIBFFI_LIBS = -Lrts/dist/build -l$$(LIBFFI_NAME)
 ifeq "$$(TargetElf)" "YES"
@@ -240,11 +250,15 @@ endif
 ifeq "$(TargetOS_CPP)" "darwin"
 LIBFFI_LIBS += -optl-Wl,-rpath -optl-Wl,@loader_path
 endif
-
 else
 # flags will be taken care of in rts/dist/libs.depend
 LIBFFI_LIBS =
 endif
+else
+# flags will be taken care of in rts/dist/libs.depend
+LIBFFI_LIBS =
+endif
+
 $$(rts_$1_LIB) : $$(rts_$1_OBJS) $$(rts_$1_DTRACE_OBJS) rts/dist/libs.depend $$(rts_dist_FFI_SO)
 	"$$(RM)" $$(RM_OPTS) $$@
 	"$$(rts_dist_HC)" -this-unit-id rts -shared -dynamic -dynload deploy \
@@ -252,6 +266,7 @@ $$(rts_$1_LIB) : $$(rts_$1_OBJS) $$(rts_$1_DTRACE_OBJS) rts/dist/libs.depend $$(
           $$(rts_dist_$1_GHC_LD_OPTS) \
 	  $$(rts_$1_DTRACE_OBJS) -o $$@
 endif
+
 else
 
 ifeq "$(USE_DTRACE)" "YES"
@@ -299,10 +314,12 @@ $$(rts_$1_LIB) : $$(rts_$1_LINKED_OBJS)
 	echo $$(rts_$1_LINKED_OBJS) $$(rts_$1_EXCLUDED_OBJS) | "$$(XARGS)" $$(XARGS_OPTS) "$$(AR_STAGE1)" \
 		$$(AR_OPTS_STAGE1) $$(EXTRA_AR_ARGS_STAGE1) $$@
 
+ifneq "$(DisableFFI)" "YES"
 ifneq "$$(UseSystemLibFFI)" "YES"
 $$(rts_$1_LIB) : rts/dist/build/libC$$(LIBFFI_NAME)$$($1_libsuf)
 rts/dist/build/libC$$(LIBFFI_NAME)$$($1_libsuf): libffi/build/inst/lib/libffi.a
 	cp $$< $$@
+endif
 endif
 
 endif
@@ -368,8 +385,10 @@ rts_CC_OPTS += -DNOSMP
 rts_HC_OPTS += -optc-DNOSMP
 endif
 
+ifneq "$(DisableFFI)" "YES"
 ifeq "$(UseLibFFIForAdjustors)" "YES"
 rts_CC_OPTS += -DUSE_LIBFFI_FOR_ADJUSTORS
+endif
 endif
 
 # We *want* type-checking of hand-written cmm.
@@ -479,8 +498,12 @@ endif
 endif
 
 # add CFLAGS for libffi
+ifneq "$(DisableFFI)" "YES"
 ifeq "$(UseSystemLibFFI)" "YES"
 LIBFFI_CFLAGS = $(addprefix -I,$(FFIIncludeDir))
+else
+LIBFFI_CFLAGS =
+endif
 else
 LIBFFI_CFLAGS =
 endif
@@ -525,6 +548,7 @@ rts/sm/Evac_thr_HC_OPTS += -optc-funroll-loops
 #-----------------------------------------------------------------------------
 # Use system provided libffi
 
+ifneq "$(DisableFFI)" "YES"
 ifeq "$(UseSystemLibFFI)" "YES"
 
 rts_PACKAGE_CPP_OPTS += -DFFI_INCLUDE_DIR=$(FFIIncludeDir)
@@ -537,6 +561,7 @@ rts_PACKAGE_CPP_OPTS += -DFFI_INCLUDE_DIR=
 rts_PACKAGE_CPP_OPTS += -DFFI_LIB_DIR=
 rts_PACKAGE_CPP_OPTS += '-DFFI_LIB="C$(LIBFFI_NAME)"'
 
+endif
 endif
 
 # -----------------------------------------------------------------------------
@@ -568,8 +593,10 @@ endif
 $(eval $(call dependencies,rts,dist,1))
 
 $(rts_dist_depfile_c_asm) : $(DTRACEPROBES_H)
+ifneq "$(DisableFFI)" "YES"
 ifneq "$(UseSystemLibFFI)" "YES"
 $(rts_dist_depfile_c_asm) : $(libffi_HEADERS)
+endif
 endif
 
 # -----------------------------------------------------------------------------
@@ -617,6 +644,7 @@ rts/package.conf.inplace : $(includes_H_CONFIG) $(includes_H_PLATFORM)
 # installing
 
 RTS_INSTALL_LIBS += $(ALL_RTS_LIBS)
+ifneq "$(DisableFFI)" "YES"
 ifneq "$(UseSystemLibFFI)" "YES"
 RTS_INSTALL_LIBS += $(wildcard rts/dist/build/lib$(LIBFFI_NAME)*$(soext)*)
 RTS_INSTALL_LIBS += $(foreach w,$(filter-out %dyn,$(rts_WAYS)),rts/dist/build/libC$(LIBFFI_NAME)$($w_libsuf))
@@ -630,6 +658,7 @@ endif
 install_libffi_headers :
 	$(INSTALL_DIR) "$(DESTDIR)$(ghcheaderdir)"
 	$(INSTALL_HEADER) $(INSTALL_OPTS) $(libffi_HEADERS) "$(DESTDIR)$(ghcheaderdir)/"
+endif
 
 # -----------------------------------------------------------------------------
 # cleaning

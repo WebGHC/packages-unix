@@ -16,6 +16,8 @@ module StgCmmForeign (
   loadThreadState,
   emitOpenNursery,
   emitCloseNursery,
+  mkExternDeclFor,
+  mkExternDeclType,
  ) where
 
 import GhcPrelude hiding( succ, (<*>) )
@@ -72,24 +74,25 @@ cgForeignCall (CCall (CCallSpec target cconv safety)) stg_args res_ty
                                      (wORD_SIZE dflags)
         ; cmm_args <- getFCallArgs stg_args
         ; (res_regs, res_hints) <- newUnboxedTupleRegs res_ty
-        ; let ((call_args, arg_hints), cmm_target)
-                = case target of
+        ; ((call_args, arg_hints), cmm_target) <- case target of
                    StaticTarget _ _   _      False ->
                        panic "cgForeignCall: unexpected FFI value import"
                    StaticTarget _ lbl mPkgId True
-                     -> let labelSource
+                     -> do
+                        let labelSource
                                 = case mPkgId of
                                         Nothing         -> ForeignLabelInThisPackage
                                         Just pkgId      -> ForeignLabelInPackage pkgId
                             size = call_size cmm_args
-                        in  ( unzip cmm_args
-                            , CmmLit (CmmLabel
-                                        (mkForeignLabel lbl size labelSource IsFunction)))
+                        emit $ mkExternDeclFor dflags cconv (zip res_regs res_hints) lbl cmm_args
+                        return ( unzip cmm_args
+                               , CmmLit (CmmLabel
+                                           (mkForeignLabel lbl size labelSource IsFunction)))
 
-                   DynamicTarget    ->  case cmm_args of
+                   DynamicTarget    ->  return $ case cmm_args of
                                            (fn,_):rest -> (unzip rest, fn)
                                            [] -> panic "cgForeignCall []"
-              fc = ForeignConvention cconv arg_hints res_hints CmmMayReturn
+        ; let fc = ForeignConvention cconv arg_hints res_hints CmmMayReturn
               call_target = ForeignTarget cmm_target fc
 
         -- we want to emit code for the call, and then emitReturn.
@@ -179,6 +182,21 @@ optimisation kicks in and commons up L1 with the heap-check
 continuation, resulting in just one proc point instead of two. Yay!
 -}
 
+
+mkExternDeclFor
+  :: DynFlags
+  -> CCallConv
+  -> [(CmmFormal, ForeignHint)]
+  -> CLabelString
+  -> [(CmmActual, ForeignHint)]
+  -> CmmAGraph
+mkExternDeclFor dflags conv ress lbl args =
+  let resTys = [ (localRegType l, h) | (l, h) <- ress ]
+      argTys = [ (cmmExprType dflags e, h) | (e, h) <- args ]
+  in  mkExternDeclType conv resTys lbl argTys
+
+mkExternDeclType :: CCallConv -> [(CmmType, ForeignHint)] -> CLabelString -> [(CmmType, ForeignHint)] -> CmmAGraph
+mkExternDeclType conv ress lbl args = mkMiddle $ CmmExternDecl conv lbl ress args
 
 emitCCall :: [(CmmFormal,ForeignHint)]
           -> CmmExpr

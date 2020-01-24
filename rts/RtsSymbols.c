@@ -883,13 +883,13 @@
       SymI_HasProto(stg_writeTVarzh)                                    \
       SymI_HasProto(stg_yieldzh)                                        \
       SymI_NeedsProto(stg_badAlignment_entry)                           \
-      SymI_NeedsProto(stg_interp_constr1_entry)                         \
-      SymI_NeedsProto(stg_interp_constr2_entry)                         \
-      SymI_NeedsProto(stg_interp_constr3_entry)                         \
-      SymI_NeedsProto(stg_interp_constr4_entry)                         \
-      SymI_NeedsProto(stg_interp_constr5_entry)                         \
-      SymI_NeedsProto(stg_interp_constr6_entry)                         \
-      SymI_NeedsProto(stg_interp_constr7_entry)                         \
+      SymI_HasProto(stg_interp_constr1_entry)                           \
+      SymI_HasProto(stg_interp_constr2_entry)                           \
+      SymI_HasProto(stg_interp_constr3_entry)                           \
+      SymI_HasProto(stg_interp_constr4_entry)                           \
+      SymI_HasProto(stg_interp_constr5_entry)                           \
+      SymI_HasProto(stg_interp_constr6_entry)                           \
+      SymI_HasProto(stg_interp_constr7_entry)                           \
       SymI_HasProto(stg_arg_bitmaps)                                    \
       SymI_HasProto(large_alloc_lim)                                    \
       SymI_HasProto(g0)                                                 \
@@ -989,7 +989,9 @@ RTS_MINGW_ONLY_SYMBOLS
 RTS_DARWIN_ONLY_SYMBOLS
 RTS_OPENBSD_ONLY_SYMBOLS
 RTS_LIBGCC_SYMBOLS
+#if !defined(DISABLE_FFI)
 RTS_LIBFFI_SYMBOLS
+#endif
 #undef SymI_NeedsProto
 #undef SymI_NeedsDataProto
 #undef SymI_HasProto
@@ -1031,6 +1033,9 @@ RTS_LIBFFI_SYMBOLS
    { #vvv, (void*)0xBAADF00D, true },
 
 RtsSymbolVal rtsSyms[] = {
+// Wasm doesn't support dynamic linking, and it complains if there is a type mismatch
+// So a simple workaround is not to declare the symbol table.
+#if !defined (wasm32_HOST_ARCH)
       RTS_SYMBOLS
       RTS_RET_SYMBOLS
       RTS_POSIX_ONLY_SYMBOLS
@@ -1039,12 +1044,15 @@ RtsSymbolVal rtsSyms[] = {
       RTS_DARWIN_ONLY_SYMBOLS
       RTS_OPENBSD_ONLY_SYMBOLS
       RTS_LIBGCC_SYMBOLS
+#if !defined(DISABLE_FFI)
       RTS_LIBFFI_SYMBOLS
+#endif
 #if defined(darwin_HOST_OS) && defined(i386_HOST_ARCH)
       // dyld stub code contains references to this,
       // but it should never be called because we treat
       // lazy pointers as nonlazy.
       { "dyld_stub_binding_helper", (void*)0xDEADBEEF, false },
 #endif
+#endif /* wasm32_HOST_ARCH */
       { 0, 0, false } /* sentinel */
 };

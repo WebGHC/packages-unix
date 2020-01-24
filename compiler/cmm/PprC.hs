@@ -142,7 +142,7 @@ pprTop (CmmData section (Statics lbl lits)) =
 pprBBlock :: CmmBlock -> SDoc
 pprBBlock block =
   nest 4 (pprBlockId (entryLabel block) <> colon) $$
-  nest 8 (vcat (map pprStmt (blockToList nodes)) $$ pprStmt last)
+  braces (nest 8 (vcat (map pprStmt (blockToList nodes)) $$ pprStmt last))
  where
   (_, nodes, last)  = blockSplit block
 
@@ -261,11 +261,10 @@ pprStmt stmt =
     CmmUnsafeForeignCall (PrimTarget (MO_Prefetch_Data _)) _results _args -> empty
 
     CmmUnsafeForeignCall target@(PrimTarget op) results args ->
-        fn_call
+        braces $ primopExternDecl op $$ fn_call
       where
         cconv = CCallConv
         fn = pprCallishMachOp_for_C op
-
         (res_hints, arg_hints) = foreignTargetHints target
         hresults = zip results res_hints
         hargs    = zip args arg_hints
@@ -276,8 +275,7 @@ pprStmt stmt =
           -- We also need to cast mem primops to prevent conflicts with GCC
           -- builtins (see bug #5967).
           | Just _align <- machOpMemcpyishAlign op
-          = (text ";EFF_(" <> fn <> char ')' <> semi) $$
-            pprForeignCall fn cconv hresults hargs
+          = semi <> pprForeignCall fn cconv hresults hargs
           | otherwise
           = pprCall fn cconv hresults hargs
 
@@ -286,8 +284,34 @@ pprStmt stmt =
     CmmCall { cml_target = expr } -> mkJMP_ (pprExpr expr) <> semi
     CmmSwitch arg ids        -> sdocWithDynFlags $ \dflags ->
                                 pprSwitch dflags arg ids
+    CmmExternDecl cconv lbl res args -> text "extern" <+> pprCFunTypeWithTypes (pprCLabelString lbl) cconv res args <> semi
 
     _other -> pprPanic "PprC.pprStmt" (ppr stmt)
+
+-- Some primops use C functions that aren't in scope by given just
+-- Stg.h. This function tells which primops need an extern declaration
+-- to bring them in scope.
+--
+-- Some primops call a C function that is in fact in scope, but with
+-- arguments / results of different types than the C function's
+-- visible declaration. So we rely on the visible declaration instead
+-- of a local extern to implicitly cast the types; otherwise we'd be
+-- declaring those functions with the wrong types, and cc would
+-- complain that the extern type is incompatible with the visible
+-- type.
+--
+-- Alternative fixes: 1) We could blacklist primops that need to use
+-- the already-visible type instead of whitelisting primops that need
+-- externs. 2) We could do an extern-fixup, changing the extern
+-- declarations of primops that we know need a different type than
+-- their parameters / results. 3) We could simply add the declarations
+-- for the functions that aren't in scope to Stg.h.
+primopExternDecl :: CallishMachOp -> SDoc
+primopExternDecl (MO_Memcpy _) = text "extern void *memcpy(void *, void *, W_);"
+primopExternDecl (MO_Memset _) = text "extern void *memset(void *, int, W_);"
+primopExternDecl (MO_Memmove _) = text "extern void *memmove(void *, void *, W_);"
+primopExternDecl (MO_Memcmp _) = text "extern int memcmp(void *, void *, W_);"
+primopExternDecl _ = empty
 
 type Hinted a = (a, ForeignHint)
 
@@ -303,16 +327,27 @@ pprForeignCall fn cconv results args = fn_call
     cast_fn = parens (parens (pprCFunType (char '*') cconv results args) <> fn)
 
 pprCFunType :: SDoc -> CCallConv -> [Hinted CmmFormal] -> [Hinted CmmActual] -> SDoc
-pprCFunType ppr_fn cconv ress args
-  = sdocWithDynFlags $ \dflags ->
+pprCFunType ppr_fn cconv ress args = sdocWithDynFlags
+  $ \dflags -> pprCFunTypeWithTypes ppr_fn cconv ressTypes (argsTypes dflags)
+ where
+  ressTypes = fmap (\(x, h) -> (localRegType x, h)) ress
+  argsTypes dflags = fmap (\(e, h) -> (cmmExprType dflags e, h)) args
+
+pprCFunTypeWithTypes :: SDoc -> CCallConv -> [Hinted CmmType] -> [Hinted CmmType] -> SDoc
+pprCFunTypeWithTypes ppr_fn cconv ress args =
     let res_type [] = text "void"
-        res_type [(one, hint)] = machRepHintCType (localRegType one) hint
+        res_type [(one, hint)] = machRepHintCType one hint
         res_type _ = panic "pprCFunType: only void or 1 return value supported"
 
-        arg_type (expr, hint) = machRepHintCType (cmmExprType dflags expr) hint
+        arg_type (ty, hint) = machRepHintCType ty hint
+
+        -- When there are no arguments, don't accidentally use
+        -- varargs. Varargs has a separate ABI on wasm.
+        voidCommafy [] = text "void"
+        voidCommafy xs = commafy xs
     in res_type ress <+>
        parens (ccallConvAttribute cconv <> ppr_fn) <>
-       parens (commafy (map arg_type args))
+       parens (voidCommafy (map arg_type args))
 
 -- ---------------------------------------------------------------------
 -- unconditional branches

@@ -1193,8 +1193,16 @@ runPhase (RealPhase cc_phase) input_fn dflags
                    | otherwise            = []
 
         -- Decide next phase
-        let next_phase = As False
+        next_phase <-
+            if platformArch platform == ArchWasm
+              then maybeMergeForeign
+              else return (As False)
+
         output_fn <- phaseOutputFilename next_phase
+
+        -- we create directories for the object file, because it
+        -- might be a hierarchical module.
+        liftIO $ createDirectoryIfMissing True (takeDirectory output_fn)
 
         let
           more_hcc_opts =
@@ -1262,7 +1270,12 @@ runPhase (RealPhase cc_phase) input_fn dflags
                              then gcc_extra_viac_flags ++ more_hcc_opts
                              else [])
                        ++ verbFlags
-                       ++ [ "-S" ]
+
+                       -- We should not make assumptions about assembly languages
+                       -- that we do not know about
+                       ++ (if platformArch platform == ArchWasm
+                             then ["-c"]
+                             else [ "-S"])
                        ++ cc_opt
                        ++ [ "-include", ghcVersionH ]
                        ++ framework_paths
